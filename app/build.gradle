@@ -1,112 +1,114 @@
 plugins {
-      id 'com.android.application'
-      id 'org.jetbrains.kotlin.android'
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    namespace 'com.arrowspro.camera'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.arrowspro.camera"
+        minSdk 26          // Android 8.0 Oreo
+        targetSdk 34       // Android 14 – required by lint for release builds
+        versionCode 1
+        versionName "1.0.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        }
     }
 
-    android {
-      namespace 'com.arrowspro.camera'
-      compileSdk 34
-
-      defaultConfig {
-          applicationId "com.arrowspro.camera"
-          minSdk 26          // Android 8.0 Oreo
-          targetSdk 28       // Android 9 Pie
-          versionCode 1
-          versionName "1.0.0"
-
-          testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-
-          ndk {
-              abiFilters 'arm64-v8a', 'armeabi-v7a'
-          }
-      }
-
-      signingConfigs {
-          release {
-              // Keystore populated from environment variables at CI time
-              if (System.getenv("KEYSTORE_FILE") != null) {
-                  storeFile     file(System.getenv("KEYSTORE_FILE"))
-                  storePassword System.getenv("KEYSTORE_PASSWORD") ?: ""
-                  keyAlias      System.getenv("KEY_ALIAS") ?: "arrowspro"
-                  keyPassword   System.getenv("KEY_PASSWORD") ?: ""
-              }
-          }
-      }
-
-      buildTypes {
-          debug {
-              debuggable true
-              minifyEnabled false
-          }
-          release {
-              minifyEnabled true
-              proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-              if (System.getenv("KEYSTORE_FILE") != null) {
-                  signingConfig signingConfigs.release
-              }
-          }
-      }
-
-      compileOptions {
-          sourceCompatibility JavaVersion.VERSION_17
-          targetCompatibility JavaVersion.VERSION_17
-      }
-
-      kotlinOptions {
-          jvmTarget = '17'
-      }
-
-      buildFeatures {
-          viewBinding true
-      }
-
-      // AGP 8.x: 'packaging' replaces deprecated 'packagingOptions'
-      packaging {
-          resources {
-              pickFirsts += [
-                  'META-INF/DEPENDENCIES',
-                  'META-INF/LICENSE',
-                  'META-INF/NOTICE'
-              ]
-          }
-          jniLibs {
-              useLegacyPackaging true
-          }
-      }
-
-      // AGP 8.x: 'androidResources' replaces deprecated 'aaptOptions'
-      androidResources {
-          noCompress += ["tflite"]
-      }
+    signingConfigs {
+        release {
+            // Keystore populated from environment variables at CI time
+            if (System.getenv("KEYSTORE_FILE") != null) {
+                storeFile     file(System.getenv("KEYSTORE_FILE"))
+                storePassword System.getenv("KEYSTORE_PASSWORD") ?: ""
+                keyAlias      System.getenv("KEY_ALIAS") ?: "arrowspro"
+                keyPassword   System.getenv("KEY_PASSWORD") ?: ""
+            }
+        }
     }
 
-    dependencies {
-      // AndroidX Core
-      implementation 'androidx.core:core-ktx:1.12.0'
-      implementation 'androidx.appcompat:appcompat:1.6.1'
-      implementation 'com.google.android.material:material:1.11.0'
-      implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
-      implementation 'androidx.fragment:fragment-ktx:1.6.2'
-      implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0'
-      implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.7.0'
-      implementation 'androidx.preference:preference-ktx:1.2.1'
-
-      // ExifInterface for DNG/JPEG metadata
-      implementation 'androidx.exifinterface:exifinterface:1.3.7'
-
-      // OpenCV 4.9.0 from Maven Central
-      implementation 'org.opencv:opencv:4.9.0'
-
-      // TensorFlow Lite
-      implementation 'org.tensorflow:tensorflow-lite:2.14.0'
-      implementation 'org.tensorflow:tensorflow-lite-support:0.4.4'
-      implementation 'org.tensorflow:tensorflow-lite-gpu:2.14.0'
-
-      // Kotlin coroutines
-      implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
-
-      testImplementation 'junit:junit:4.13.2'
-      androidTestImplementation 'androidx.test.ext:junit:1.1.5'
-      androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+    buildTypes {
+        debug {
+            debuggable true
+            minifyEnabled false
+        }
+        release {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (System.getenv("KEYSTORE_FILE") != null) {
+                signingConfig signingConfigs.release
+            }
+        }
     }
-    
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+
+    buildFeatures {
+        viewBinding true
+    }
+
+    // AGP 8.x: 'packaging' replaces deprecated 'packagingOptions'
+    packaging {
+        resources {
+            pickFirsts += [
+                'META-INF/DEPENDENCIES',
+                'META-INF/LICENSE',
+                'META-INF/NOTICE'
+            ]
+        }
+        jniLibs {
+            useLegacyPackaging true
+        }
+    }
+
+    // AGP 8.x: 'androidResources' replaces deprecated 'aaptOptions'
+    androidResources {
+        noCompress += ["tflite"]
+    }
+}
+
+dependencies {
+    // AndroidX Core
+    implementation 'androidx.core:core-ktx:1.12.0'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.11.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'androidx.fragment:fragment-ktx:1.6.2'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.7.0'
+    implementation 'androidx.preference:preference-ktx:1.2.1'
+
+    // ExifInterface for DNG/JPEG metadata
+    implementation 'androidx.exifinterface:exifinterface:1.3.7'
+
+    // OpenCV 4.9.0 from Maven Central
+    implementation 'org.opencv:opencv:4.9.0'
+
+    // TensorFlow Lite
+    implementation 'org.tensorflow:tensorflow-lite:2.14.0'
+    implementation 'org.tensorflow:tensorflow-lite-support:0.4.4'
+    implementation 'org.tensorflow:tensorflow-lite-gpu:2.14.0'
+
+    // AutoValue annotations – required by tensorflow-lite-support at compile/link time
+    implementation 'com.google.auto.value:auto-value-annotations:1.10.4'
+
+    // Kotlin coroutines
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
+
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+}
