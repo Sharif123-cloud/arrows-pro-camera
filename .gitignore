@@ -1,0 +1,27 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# APK/AAB outputs (except CI artifacts)
+app/build/outputs/apk/
+app/build/outputs/bundle/
+
+# Keystores — NEVER commit these
+*.jks
+*.keystore
+release.jks
+
+# TFLite model (downloaded at build time)
+app/src/main/assets/esrgan.tflite

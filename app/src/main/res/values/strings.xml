@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Arrows Pro Camera</string>
+    <string name="settings">Settings</string>
+
+    <!-- Settings keys -->
+    <string name="pref_burst_count">burst_count</string>
+    <string name="pref_ev_comp">ev_comp</string>
+    <string name="pref_use_sr">use_sr</string>
+
+    <!-- Settings labels -->
+    <string name="pref_burst_title">Burst count</string>
+    <string name="pref_burst_summary">Number of frames per shutter press</string>
+    <string name="pref_ev_title">EV compensation</string>
+    <string name="pref_ev_summary">Exposure offset in stops (negative = underexpose to protect highlights)</string>
+    <string name="pref_sr_title">AI upscaling (ESRGAN)</string>
+    <string name="pref_sr_summary">2× super-resolution — adds ~3 s processing time</string>
+
+    <!-- Burst count entries -->
+    <string-array name="burst_count_entries">
+        <item>15 frames (fast)</item>
+        <item>25 frames (balanced)</item>
+        <item>32 frames (max quality)</item>
+    </string-array>
+    <string-array name="burst_count_values">
+        <item>15</item>
+        <item>25</item>
+        <item>32</item>
+    </string-array>
+
+    <!-- EV entries -->
+    <string-array name="ev_entries">
+        <item>-1.0 EV</item>
+        <item>-1.5 EV</item>
+        <item>-2.0 EV</item>
+    </string-array>
+    <string-array name="ev_values">
+        <item>-1.0</item>
+        <item>-1.5</item>
+        <item>-2.0</item>
+    </string-array>
+</resources>
