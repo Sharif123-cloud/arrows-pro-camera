@@ -1,112 +1,129 @@
 name: Build Arrows Pro Camera APK
 
-    on:
-    push:
-      branches: [ main, master ]
-    pull_request:
-      branches: [ main, master ]
-    workflow_dispatch:
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
 
-    permissions:
-    contents: write
+permissions:
+  contents: write
 
-    jobs:
-    build:
-      name: Build APK
-      runs-on: ubuntu-latest
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
 
-      steps:
-        - name: Checkout repository
-          uses: actions/checkout@v4
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-        - name: Set up JDK 17
-          uses: actions/setup-java@v4
-          with:
-            java-version: '17'
-            distribution: 'temurin'
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
 
-        - name: Set up Android SDK
-          uses: android-actions/setup-android@v3
+      # Bootstrap must run BEFORE the cache step so a freshly-generated
+      # gradle-wrapper.jar is never overwritten by a cached (possibly corrupt) one.
+      - name: Bootstrap Gradle Wrapper JAR
+        run: |
+          set -euo pipefail
+          GRADLE_VERSION=8.2
+          echo "Downloading Gradle ${GRADLE_VERSION} binary distribution..."
+          wget -q "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" \
+            -O /tmp/gradle-dist.zip
+          echo "Unzipping Gradle..."
+          unzip -q /tmp/gradle-dist.zip -d /tmp/gradle-home
+          echo "Regenerating gradle-wrapper.jar (replaces any corrupt/missing JAR in repo)..."
+          /tmp/gradle-home/gradle-${GRADLE_VERSION}/bin/gradle wrapper \
+            --gradle-version "${GRADLE_VERSION}" \
+            --distribution-type bin \
+            --project-dir .
+          chmod +x gradlew
+          JAR_SIZE=$(wc -c < gradle/wrapper/gradle-wrapper.jar)
+          echo "gradle-wrapper.jar size: ${JAR_SIZE} bytes"
+          if [ "${JAR_SIZE}" -lt 50000 ]; then
+            echo "ERROR: gradle-wrapper.jar is suspiciously small (${JAR_SIZE} bytes). Regeneration failed." >&2
+            exit 1
+          fi
+          echo "Smoke-testing wrapper..."
+          ./gradlew --version
 
-        - name: Cache Gradle packages
-          uses: actions/cache@v4
-          with:
-            path: |
-              ~/.gradle/caches
-              ~/.gradle/wrapper
-            key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-            restore-keys: gradle-
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
 
-        - name: Install Gradle 8.2 and regenerate wrapper JAR
-          run: |
-            GRADLE_VERSION=8.2
-            echo "Downloading Gradle ${GRADLE_VERSION}..."
-            curl -fsSL "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" \
-              -o /tmp/gradle-dist.zip
-            unzip -q /tmp/gradle-dist.zip -d /tmp/gradle-home
-            echo "Regenerating Gradle wrapper (creates a valid gradle-wrapper.jar)..."
-            /tmp/gradle-home/gradle-${GRADLE_VERSION}/bin/gradle wrapper \
-              --gradle-version "${GRADLE_VERSION}" \
-              --distribution-type bin \
-              --project-dir .
-            chmod +x gradlew
-            echo "Wrapper JAR size: $(wc -c < gradle/wrapper/gradle-wrapper.jar) bytes"
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: gradle-
 
-        - name: Download ESRGAN TFLite model
-          run: |
-            mkdir -p app/src/main/assets
-            curl -L -o app/src/main/assets/esrgan.tflite \
-              "https://github.com/tensorflow/examples/raw/master/lite/examples/super_resolution/android/app/src/main/assets/ESRGAN.tflite" \
-              || echo "WARNING: ESRGAN model not available; SR will fall back to bilinear"
+      - name: Download ESRGAN TFLite model
+        run: |
+          mkdir -p app/src/main/assets
+          curl -L --max-time 120 \
+            -o app/src/main/assets/esrgan.tflite \
+            "https://github.com/tensorflow/examples/raw/master/lite/examples/super_resolution/android/app/src/main/assets/ESRGAN.tflite" \
+            && echo "ESRGAN model downloaded: $(du -sh app/src/main/assets/esrgan.tflite)" \
+            || echo "WARNING: ESRGAN model unavailable; SuperResolution will fall back to bilinear upscaling."
 
-        - name: Build debug APK
-          run: ./gradlew assembleDebug --no-daemon --stacktrace
+      - name: Build debug APK
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
 
-        - name: Build release APK (unsigned)
-          run: ./gradlew assembleRelease --no-daemon --stacktrace
+      - name: Build release APK (unsigned)
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
 
-        - name: Sign release APK
-          if: env.KEYSTORE_BASE64 != ''
-          env:
-            KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-            KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-            KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-            KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          run: |
-            echo "$KEYSTORE_BASE64" | base64 -d > release.jks
-            $ANDROID_HOME/build-tools/34.0.0/apksigner sign \
-              --ks release.jks \
-              --ks-pass env:KEYSTORE_PASSWORD \
-              --key-pass env:KEY_PASSWORD \
-              --ks-key-alias "$KEY_ALIAS" \
-              --out app/build/outputs/apk/release/arrows-pro-camera-signed.apk \
-              app/build/outputs/apk/release/app-release-unsigned.apk
+      - name: Sign release APK
+        if: ${{ env.KEYSTORE_BASE64 != '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > release.jks
+          $ANDROID_HOME/build-tools/34.0.0/apksigner sign \
+            --ks release.jks \
+            --ks-pass env:KEYSTORE_PASSWORD \
+            --key-pass env:KEY_PASSWORD \
+            --ks-key-alias "$KEY_ALIAS" \
+            --out app/build/outputs/apk/release/arrows-pro-camera-signed.apk \
+            app/build/outputs/apk/release/app-release-unsigned.apk
 
-        - name: Upload Debug APK
-          uses: actions/upload-artifact@v4
-          with:
-            name: arrows-pro-camera-debug
-            path: app/build/outputs/apk/debug/app-debug.apk
-            retention-days: 30
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: arrows-pro-camera-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
 
-        - name: Upload Release APK
-          uses: actions/upload-artifact@v4
-          with:
-            name: arrows-pro-camera-release
-            path: |
-              app/build/outputs/apk/release/app-release-unsigned.apk
-              app/build/outputs/apk/release/arrows-pro-camera-signed.apk
-            retention-days: 30
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: arrows-pro-camera-release
+          path: |
+            app/build/outputs/apk/release/app-release-unsigned.apk
+            app/build/outputs/apk/release/arrows-pro-camera-signed.apk
+          retention-days: 30
 
-        - name: Create Release
-          if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-          uses: softprops/action-gh-release@v2
-          with:
-            tag_name: build-${{ github.run_number }}
-            name: "Arrows Pro Camera v1.0 (build ${{ github.run_number }})"
-            draft: false
-            prerelease: true
-            files: |
-              app/build/outputs/apk/debug/app-debug.apk
-              app/build/outputs/apk/release/app-release-unsigned.apk
-    
+      - name: Create GitHub Release with APK
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: "Arrows Pro Camera – Build ${{ github.run_number }}"
+          body: |
+            Automated build from commit ${{ github.sha }}
+
+            **Debug APK**: download `arrows-pro-camera-debug` artifact above.
+          files: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/release/app-release-unsigned.apk
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
