@@ -25,3 +25,10 @@ release.jks
 
 # TFLite model (downloaded at build time)
 app/src/main/assets/esrgan.tflite
+
+# Build outputs
+app/build/
+build/
+
+# Gradle cache
+.gradle/
