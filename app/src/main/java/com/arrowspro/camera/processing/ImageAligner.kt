@@ -6,7 +6,7 @@ import org.opencv.android.Utils
 import org.opencv.calib3d.Calib3d
 import org.opencv.core.*
 import org.opencv.features2d.ORB
-import org.opencv.features2d.BFMatcher
+import org.opencv.features2d.DescriptorMatcher
 import org.opencv.imgproc.Imgproc
 
 /**
@@ -30,7 +30,8 @@ class ImageAligner {
     }
 
     private val orb: ORB = ORB.create(MAX_FEATURES)
-    private val matcher: BFMatcher = BFMatcher.create(BFMatcher.BRUTEFORCE_HAMMING, false)
+    private val matcher: DescriptorMatcher =
+        DescriptorMatcher.create(DescriptorMatcher.BRUTEFORCE_HAMMING)
 
     /**
      * Align [frames] to frames[0] (the reference).

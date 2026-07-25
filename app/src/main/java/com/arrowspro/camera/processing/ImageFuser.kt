@@ -5,7 +5,7 @@ import android.util.Log
 import org.opencv.android.Utils
 import org.opencv.core.*
 import org.opencv.imgproc.Imgproc
-import org.opencv.photo.MergeMertens
+import org.opencv.photo.Photo
 
 /**
  * ImageFuser — merges an aligned burst into a single high-dynamic-range image.
@@ -38,7 +38,7 @@ class ImageFuser {
         val mats = frames.map { bitmapToFloat32(it) }
 
         // Mertens fusion (built into OpenCV)
-        val merger = MergeMertens.create(1f, 1f, 1f)   // contrast, saturation, exposure weights
+        val merger = Photo.createMergeMertens(1f, 1f, 1f)  // contrast, saturation, exposure weights
         val fused32f = Mat()
         merger.process(mats, fused32f)
 

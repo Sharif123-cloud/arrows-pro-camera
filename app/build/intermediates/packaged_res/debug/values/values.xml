@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="burst_count_entries">
+        <item>15 frames (fast)</item>
+        <item>25 frames (balanced)</item>
+        <item>32 frames (max quality)</item>
+    </string-array>
+    <string-array name="burst_count_values">
+        <item>15</item>
+        <item>25</item>
+        <item>32</item>
+    </string-array>
+    <string-array name="ev_entries">
+        <item>-1.0 EV</item>
+        <item>-1.5 EV</item>
+        <item>-2.0 EV</item>
+    </string-array>
+    <string-array name="ev_values">
+        <item>-1.0</item>
+        <item>-1.5</item>
+        <item>-2.0</item>
+    </string-array>
+    <color name="black">#FF000000</color>
+    <color name="colorAccent">#FFFF9800</color>
+    <color name="colorBackground">#FF000000</color>
+    <color name="colorOnBackground">#FFFFFFFF</color>
+    <color name="colorOnPrimary">#FFFFFFFF</color>
+    <color name="colorOnSecondary">#FF000000</color>
+    <color name="colorOnSurface">#FFFFFFFF</color>
+    <color name="colorPrimary">#FF000000</color>
+    <color name="colorPrimaryVariant">#FF1C1C1C</color>
+    <color name="colorSecondary">#FFFF9800</color>
+    <color name="colorSurface">#FF1C1C1C</color>
+    <color name="white">#FFFFFFFF</color>
+    <string name="app_name">Arrows Pro Camera</string>
+    <string name="pref_burst_count">burst_count</string>
+    <string name="pref_burst_summary">Number of frames per shutter press</string>
+    <string name="pref_burst_title">Burst count</string>
+    <string name="pref_ev_comp">ev_comp</string>
+    <string name="pref_ev_summary">Exposure offset in stops (negative = underexpose to protect highlights)</string>
+    <string name="pref_ev_title">EV compensation</string>
+    <string name="pref_sr_summary">2× super-resolution — adds ~3 s processing time</string>
+    <string name="pref_sr_title">AI upscaling (ESRGAN)</string>
+    <string name="pref_use_sr">use_sr</string>
+    <string name="settings">Settings</string>
+    <style name="Theme.ArrowsProCamera" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryVariant">@color/colorPrimaryVariant</item>
+        <item name="colorOnPrimary">@color/colorOnPrimary</item>
+        <item name="colorSecondary">@color/colorSecondary</item>
+        <item name="colorOnSecondary">@color/colorOnSecondary</item>
+        <item name="android:colorBackground">@color/colorBackground</item>
+        <item name="colorSurface">@color/colorSurface</item>
+        <item name="colorOnSurface">@color/colorOnSurface</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowFullscreen">true</item>
+    </style>
+</resources>

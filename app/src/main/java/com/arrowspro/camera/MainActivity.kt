@@ -11,6 +11,7 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.commit
 import com.arrowspro.camera.databinding.ActivityMainBinding
 import com.arrowspro.camera.ui.ViewfinderFragment
+import org.opencv.android.OpenCVLoader
 
 class MainActivity : AppCompatActivity() {
 
@@ -31,6 +32,11 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // Initialise OpenCV native libraries
+        if (!OpenCVLoader.initDebug()) {
+            android.util.Log.e("MainActivity", "OpenCV init failed")
+        }
 
         // Keep screen on while app is open
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)

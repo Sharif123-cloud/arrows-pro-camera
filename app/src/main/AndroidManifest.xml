@@ -40,7 +40,7 @@
             android:name=".processing.ProcessingService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="dataProcessing" />
+            android:foregroundServiceType="dataSync" />
 
     </application>
 
