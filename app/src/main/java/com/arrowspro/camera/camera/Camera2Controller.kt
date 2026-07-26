@@ -27,13 +27,20 @@ import java.util.concurrent.Executors
  *  • Prefers RAW_SENSOR output; falls back to YUV_420_888 when RAW is unsupported.
  *  • Locks PDAF (phase-detect AF) before burst.
  *  • Captures 15–32 under-exposed frames (-1.0 to -1.5 EV).
+ *
+ * OOM FIX: YUV capture size is capped at 2 MP.
+ *   12 MP × 25 frames × 4 bytes/px = 1.2 GB — OOM on 3 GB Snapdragon 450.
+ *   2 MP × 15 frames × 4 bytes/px  = 120 MB  — safe.
  */
 class Camera2Controller(private val context: Context) {
 
     companion object {
         private const val TAG = "Camera2Controller"
-        const val DEFAULT_BURST_COUNT = 25
-        const val DEFAULT_EV_COMPENSATION = -1.0f   // stops below metered
+        const val DEFAULT_BURST_COUNT = 15  // reduced for 3 GB device
+        const val DEFAULT_EV_COMPENSATION = -1.0f
+
+        // Snapdragon 450 / 3 GB RAM safety cap: keep in-memory frames ≤ ~120 MB total.
+        private const val MAX_YUV_PIXELS = 2_000_000L   // ~1600 × 1250
     }
 
     // ── Threading ──────────────────────────────────────────────────────────────
@@ -63,75 +70,77 @@ class Camera2Controller(private val context: Context) {
     private var yuvReader: ImageReader? = null
 
     // ── Callbacks ──────────────────────────────────────────────────────────────
-    var onBurstFrame: ((android.media.Image, Boolean) -> Unit)? = null  // image, isRaw
+    var onBurstFrame: ((android.media.Image, Boolean) -> Unit)? = null
     var onError: ((String) -> Unit)? = null
 
     // ──────────────────────────────────────────────────────────────────────────
     // Public API
     // ──────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Opens the back-facing camera and prepares surfaces.
-     * Returns true on success.
-     */
     @SuppressLint("MissingPermission")
-    suspend fun open(previewSurface: Surface, preferredPreviewSize: Size = Size(1920, 1080)): Boolean =
-        withContext(Dispatchers.IO) {
-            cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
-            cameraId = selectCamera() ?: run {
-                onError?.invoke("No suitable camera found")
-                return@withContext false
-            }
-            characteristics = cameraManager.getCameraCharacteristics(cameraId)
-            previewSurfaceRef = previewSurface
-
-            // Detect RAW capability
-            val caps = characteristics!!.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)
-                ?: intArrayOf()
-            supportsRaw =
-                CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_RAW in caps
-            Log.i(TAG, "RAW supported: $supportsRaw")
-
-            // Resolve output sizes
-            val map = characteristics!!.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!
-            if (supportsRaw) {
-                rawSize = map.getOutputSizes(ImageFormat.RAW_SENSOR)
-                    ?.maxByOrNull { it.width.toLong() * it.height }
-                Log.i(TAG, "RAW size: $rawSize")
-            }
-            yuvSize = map.getOutputSizes(ImageFormat.YUV_420_888)
-                ?.maxByOrNull { it.width.toLong() * it.height }
-
-            // Create ImageReaders
-            setupImageReaders()
-
-            // Open camera device
-            val opened = CompletableDeferred<Boolean>()
-            cameraManager.openCamera(cameraId, object : CameraDevice.StateCallback() {
-                override fun onOpened(camera: CameraDevice) {
-                    cameraDevice = camera
-                    opened.complete(true)
-                }
-                override fun onDisconnected(camera: CameraDevice) {
-                    camera.close()
-                    opened.complete(false)
-                }
-                override fun onError(camera: CameraDevice, error: Int) {
-                    camera.close()
-                    opened.complete(false)
-                    onError?.invoke("Camera open error: $error")
-                }
-            }, cameraHandler)
-
-            if (!opened.await()) return@withContext false
-
-            // Create capture session
-            createCaptureSession(previewSurface)
+    suspend fun open(
+        previewSurface: Surface,
+        preferredPreviewSize: Size = Size(1920, 1080)
+    ): Boolean = withContext(Dispatchers.IO) {
+        cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+        cameraId = selectCamera() ?: run {
+            onError?.invoke("No suitable camera found")
+            return@withContext false
         }
+        characteristics = cameraManager.getCameraCharacteristics(cameraId)
+        previewSurfaceRef = previewSurface
+
+        // Detect RAW capability (Snapdragon 450 very likely does NOT support RAW)
+        val caps = characteristics!!.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)
+            ?: intArrayOf()
+        supportsRaw = CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_RAW in caps
+        Log.i(TAG, "RAW supported: $supportsRaw")
+
+        val map = characteristics!!.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!
+
+        if (supportsRaw) {
+            rawSize = map.getOutputSizes(ImageFormat.RAW_SENSOR)
+                ?.maxByOrNull { it.width.toLong() * it.height }
+            Log.i(TAG, "RAW size: $rawSize")
+        }
+
+        // Cap YUV size at MAX_YUV_PIXELS to prevent OOM.
+        // Taking the uncapped max (12 MP) × 25 frames × 4 bytes = ~1.2 GB; always crashes.
+        val allYuvSizes = map.getOutputSizes(ImageFormat.YUV_420_888) ?: emptyArray()
+        yuvSize = allYuvSizes
+            .filter { it.width.toLong() * it.height <= MAX_YUV_PIXELS }
+            .maxByOrNull { it.width.toLong() * it.height }
+            ?: allYuvSizes.minByOrNull { it.width.toLong() * it.height }   // fallback: smallest
+            ?: Size(1280, 720)
+        Log.i(TAG, "YUV size (capped at ${MAX_YUV_PIXELS/1_000_000}MP): $yuvSize")
+
+        setupImageReaders()
+
+        // Open camera device
+        val opened = CompletableDeferred<Boolean>()
+        cameraManager.openCamera(cameraId, object : CameraDevice.StateCallback() {
+            override fun onOpened(camera: CameraDevice) {
+                cameraDevice = camera
+                opened.complete(true)
+            }
+            override fun onDisconnected(camera: CameraDevice) {
+                camera.close()
+                opened.complete(false)
+            }
+            override fun onError(camera: CameraDevice, error: Int) {
+                camera.close()
+                opened.complete(false)
+                onError?.invoke("Camera open error: $error")
+            }
+        }, cameraHandler)
+
+        if (!opened.await()) return@withContext false
+
+        createCaptureSession(previewSurface)
+    }
 
     /**
      * Lock PDAF then fire a burst of [count] frames at [evCompensation] EV.
-     * Calls [onBurstFrame] for each captured frame.
      */
     suspend fun captureBurst(
         count: Int = DEFAULT_BURST_COUNT,
@@ -156,14 +165,11 @@ class Camera2Controller(private val context: Context) {
             yuvReader!!.surface
         }
 
-        val evRange = characteristics!!.get(
-            CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE
-        ) ?: Range(-12, 12)
-        val evStep = characteristics!!.get(
-            CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP
-        )?.toFloat() ?: 0.5f
-        val evSteps = (evCompensation / evStep).toInt()
-            .coerceIn(evRange.lower, evRange.upper)
+        val evRange = characteristics!!.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE)
+            ?: Range(-12, 12)
+        val evStep = characteristics!!.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP)
+            ?.toFloat() ?: 0.5f
+        val evSteps = (evCompensation / evStep).toInt().coerceIn(evRange.lower, evRange.upper)
 
         val requests = (0 until count).map {
             device.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply {
@@ -216,9 +222,8 @@ class Camera2Controller(private val context: Context) {
     }
 
     private fun selectCamera(): String? {
-        val manager = cameraManager
-        for (id in manager.cameraIdList) {
-            val c = manager.getCameraCharacteristics(id)
+        for (id in cameraManager.cameraIdList) {
+            val c = cameraManager.getCameraCharacteristics(id)
             if (c.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK) {
                 return id
             }
@@ -233,22 +238,22 @@ class Camera2Controller(private val context: Context) {
                 ImageFormat.RAW_SENSOR, 4
             ).apply {
                 setOnImageAvailableListener({ reader ->
-                    reader.acquireLatestImage()?.let { img ->
-                        onBurstFrame?.invoke(img, true)
-                    }
+                    reader.acquireLatestImage()?.let { img -> onBurstFrame?.invoke(img, true) }
                 }, cameraHandler)
             }
         }
 
-        val size = yuvSize ?: Size(4000, 3000)
+        // Safety: never allocate more than MAX_YUV_PIXELS regardless of yuvSize
+        val size = yuvSize?.takeIf { it.width.toLong() * it.height <= MAX_YUV_PIXELS }
+            ?: Size(1280, 720)
+        Log.i(TAG, "ImageReader YUV size: $size (${size.width * size.height / 1_000_000.0}MP)")
+
         yuvReader = ImageReader.newInstance(
             size.width, size.height,
-            ImageFormat.YUV_420_888, 4
+            ImageFormat.YUV_420_888, 6
         ).apply {
             setOnImageAvailableListener({ reader ->
-                reader.acquireLatestImage()?.let { img ->
-                    onBurstFrame?.invoke(img, false)
-                }
+                reader.acquireLatestImage()?.let { img -> onBurstFrame?.invoke(img, false) }
             }, cameraHandler)
         }
     }
@@ -277,10 +282,7 @@ class Camera2Controller(private val context: Context) {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
             val configs = surfaces.map { OutputConfiguration(it) }
             device.createCaptureSession(
-                SessionConfiguration(
-                    SessionConfiguration.SESSION_REGULAR,
-                    configs, cameraExecutor, callback
-                )
+                SessionConfiguration(SessionConfiguration.SESSION_REGULAR, configs, cameraExecutor, callback)
             )
         } else {
             @Suppress("DEPRECATION")
@@ -291,38 +293,36 @@ class Camera2Controller(private val context: Context) {
 
     private fun startPreviewInternal(session: CameraCaptureSession, device: CameraDevice) {
         val surface = previewSurfaceRef ?: return
-        val request = device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
-            addTarget(surface)
-            applyAutoAE(this, 0f)
-            set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+        try {
+            val request = device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
+                addTarget(surface)
+                applyAutoAE(this, 0f)
+                set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+            }
+            session.setRepeatingRequest(request.build(), null, cameraHandler)
+        } catch (e: Exception) {
+            Log.e(TAG, "Preview start failed: ${e.message}")
         }
-        session.setRepeatingRequest(request.build(), null, cameraHandler)
     }
 
     private fun applyAutoAE(builder: CaptureRequest.Builder, ev: Float) {
         builder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
         builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
         builder.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
-        val evStep =
-            characteristics?.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP)?.toFloat()
-                ?: 0.5f
+        val evStep = characteristics?.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP)
+            ?.toFloat() ?: 0.5f
         val steps = (ev / evStep).toInt()
         builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, steps)
     }
 
-    /**
-     * Trigger AF and wait for lock (PDAF).
-     */
     private suspend fun lockAF(session: CameraCaptureSession, device: CameraDevice) {
         val surface = previewSurfaceRef ?: return
         val locked = CompletableDeferred<Unit>()
         val request = device.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply {
             addTarget(surface)
             set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_START)
-            set(
-                CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER,
-                CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_START
-            )
+            set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER,
+                CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_START)
         }
         session.capture(request.build(), object : CameraCaptureSession.CaptureCallback() {
             override fun onCaptureCompleted(
@@ -338,7 +338,6 @@ class Camera2Controller(private val context: Context) {
                 }
             }
         }, cameraHandler)
-        // Give AF up to 2 seconds
         withTimeoutOrNull(2000) { locked.await() }
     }
 }
