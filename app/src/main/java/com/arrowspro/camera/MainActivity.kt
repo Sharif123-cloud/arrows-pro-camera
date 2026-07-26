@@ -4,7 +4,9 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -18,6 +20,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
 
     companion object {
+        private const val TAG = "MainActivity"
         private const val REQUEST_PERMISSIONS = 100
         private val REQUIRED_PERMISSIONS = buildList {
             add(Manifest.permission.CAMERA)
@@ -33,12 +36,22 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Initialise OpenCV native libraries
-        if (!OpenCVLoader.initDebug()) {
-            android.util.Log.e("MainActivity", "OpenCV init failed")
+        // initLocal() is the correct API when using the Maven Central embedded AAR
+        // (org.opencv:opencv:4.9.0). initDebug() targets the now-removed OpenCV Manager
+        // app and silently fails on modern devices, causing SIGSEGV on the first OpenCV call.
+        if (!OpenCVLoader.initLocal()) {
+            Log.e(TAG, "OpenCV native library failed to load")
+            Toast.makeText(
+                this,
+                "Camera engine failed to start — OpenCV load error. Please reinstall.",
+                Toast.LENGTH_LONG
+            ).show()
+            finish()
+            return
         }
+        Log.i(TAG, "OpenCV loaded successfully")
 
-        // Keep screen on while app is open
+        // Keep screen on while the viewfinder is visible
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         if (allPermissionsGranted()) {
@@ -65,7 +78,11 @@ class MainActivity : AppCompatActivity() {
         if (requestCode == REQUEST_PERMISSIONS && allPermissionsGranted()) {
             launchViewfinder()
         } else {
-            // Show rationale or finish
+            Toast.makeText(
+                this,
+                "Camera and storage permissions are required.",
+                Toast.LENGTH_LONG
+            ).show()
             finish()
         }
     }
