@@ -30,13 +30,18 @@ class ViewfinderFragment : Fragment() {
     private var _binding: FragmentViewfinderBinding? = null
     private val binding get() = _binding!!
 
-    private val camera = Camera2Controller(requireContext())
+    // CRITICAL FIX: Camera2Controller MUST NOT be initialized at field-declaration time
+    // because requireContext() / context is null until onAttach().  Calling requireContext()
+    // during class-field initialization (before onAttach) throws:
+    //   IllegalStateException: Fragment not attached to a context
+    // which is the primary crash seen on first launch.
+    private lateinit var camera: Camera2Controller
     private val burstManager = BurstCaptureManager()
     private var processingService: ProcessingService? = null
     private var isBound = false
 
     // Settings (loaded from SharedPreferences)
-    private var burstCount = 25
+    private var burstCount = 15   // Reduced default for 3 GB Snapdragon 450 (OOM safety)
     private var evComp = -1.0f
     private var useSR = true
 
@@ -67,7 +72,17 @@ class ViewfinderFragment : Fragment() {
         }
     }
 
-    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
+    override fun onAttach(context: Context) {
+        super.onAttach(context)
+        // Safe: context is guaranteed non-null here
+        camera = Camera2Controller(context)
+    }
+
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
         _binding = FragmentViewfinderBinding.inflate(inflater, container, false)
         return binding.root
     }
@@ -108,7 +123,9 @@ class ViewfinderFragment : Fragment() {
     private fun startCamera(surface: Surface) {
         CoroutineScope(Dispatchers.Main).launch {
             val ok = camera.open(surface, Size(1920, 1080))
-            if (!ok) Toast.makeText(requireContext(), "Camera failed to open", Toast.LENGTH_SHORT).show()
+            if (!ok) {
+                Toast.makeText(requireContext(), "Camera failed to open", Toast.LENGTH_SHORT).show()
+            }
         }
         // Wire burst manager
         burstManager.onBurstComplete = { frames, isRaw ->
@@ -134,7 +151,8 @@ class ViewfinderFragment : Fragment() {
 
     private fun loadSettings() {
         val prefs = requireContext().getSharedPreferences("settings", Context.MODE_PRIVATE)
-        burstCount = prefs.getInt("burst_count", 25)
+        // Cap burst count at 15 for 3 GB device; 25 × 12 MP × 4 bytes = 1.2 GB → OOM
+        burstCount = prefs.getInt("burst_count", 15).coerceAtMost(15)
         evComp = prefs.getFloat("ev_comp", -1.0f)
         useSR = prefs.getBoolean("use_sr", true)
     }
